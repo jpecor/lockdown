@@ -33,15 +33,17 @@ a bit about Pandas than anything else.
 
 """
 
-
 import pandas as pd 
+from bokeh.plotting import figure, output_file, show
+from bokeh.models import Legend
 import re
+import math
 
 # Month abbreviations, number, date range
 months = {"jan":('01', 1,31),
           "feb":('02', 20,28),
-          "mar":('03', 1,31),
-          "apr":('04', 1,6),
+          "mar":('03', 22,31), 
+          "apr":('04', 1,12),
           "may":('05', 1,31),
           "jun":('06', 1,30),
           "jul":('07', 1,31),
@@ -52,12 +54,30 @@ months = {"jan":('01', 1,31),
           "dec":('12', 1,28)
          }
 
+target_states = ['Wisconsin', 'Idaho', 'Iowa']
+# target_states = ['Wisconsin']
+
+state_colors = {'Wisconsin':'blue',
+                'Idaho':'red',
+                'Iowa':'orange'}
+
 # target_state = 'Wisconsin'
-target_state = 'Iowa'
-target_months = ['mar','apr']
+# target_state = 'Idaho'
+# target_state = 'Iowa'
+
+target_city = 'Eau Claire'
+
+# target_months = ['mar','apr']
+target_months = ['apr']
 
 dfs = {}
-wi = {}
+statefs = {}
+
+total_confirmed = 0
+total_state_deaths = 0
+
+plot_dates = []
+plot_confirmed = {}
 
 for month in target_months:
 
@@ -66,52 +86,110 @@ for month in target_months:
 
     for day in range(first_day,last_day):
 
+        state_confirmed = 0
+        state_deaths = 0
+
         date = F'{months[month][0]}-{day:02}-2020'
+        print(f'Fetching data for {date}')
 
-        url = F'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/{date}.csv'
+        plot_dates.append(date)
 
-        dfs[date] = pd.read_csv(url)
+        csv = F'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/{date}.csv'
+        # csv = F'../statvilla/covid19/jhdata/COVID-19/csse_covid_19_data/csse_covid_19_daily_reports/{date}.csv'
+
+        dfs[date] = pd.read_csv(csv)
         keys = dfs[date].keys().values
 
-        wi = None
+        statef = None   # Create a data frame just for a given state
         df = dfs[date]
 
         for key in keys:
-
-            if (key.find('Province_State') >= 0):
-                states = df['Province_State']
-                for state in states:
-                    if (type(state)is str):
-                        if (state.find(target_state)>=0):
-                            wi = df[df['Province_State']==target_state]
-
-            # Not doing anytyhing with this right now...
-            elif (key.find('Province/State') >= 0):
-                states = df['Province/State']
-                for state in states:
-                    if (type(state)is str):
-                        if (state.find(target_state)>=0):
-                            wi = df[df['Province/State']==target_state]
+            # Look for a target state
             
-        total_confirmed = 0
-        total_deaths = 0
+            if (key.find('Province_State') >= 0):
 
-        if (wi is not None):
-            for city in range(0,wi['Confirmed'].size):
-                confirmed = wi['Confirmed'].values[city]
-                deaths = wi['Deaths'].values[city]
-                # loc = wi['Admin2'].values[city]
+                states = df['Province_State']
 
-                total_confirmed += confirmed
-                total_deaths += deaths
+                for target_state in target_states:
 
-                # print(F'Date: {date} - City: {loc} Confirmed: {confirmed} - Total Confirmed: {total_confirmed}')
-                # print(F'Date: - Confirmed: {confirmed} - Total Confirmed: {total_confirmed}')
+                    total_confirmed = 0
+                    total_deaths = 0
 
-            print(F'{date}.csv : {target_state} - confirmed: {total_confirmed}  deaths: {total_deaths} ')
+                    for state in states:
+                        # print(state)
+                        if (type(state)is str):
+                            if (state.find(target_state)>=0):
+                                statefs[target_state] = df[df['Province_State']==target_state]
+                                
+                    # If a target state was found, grab data from it.
+                    state_confirmed = 0
+                    state_deaths = 0
+                    confirmed_plot_values = []
+                    xs = []
+                    ys = []
+                    
+                    if (statefs[target_state] is not None):
 
+                        for city in range(0,statefs[target_state]['Confirmed'].size):
+                            
+                            state_confirmed += statefs[target_state]['Confirmed'].values[city]
+                            state_deaths += statefs[target_state]['Deaths'].values[city]
 
+                        d_confirmed = state_confirmed - total_confirmed
+                        total_confirmed = state_confirmed
 
+                        d_state_deaths = state_deaths - total_deaths
+                        total_deaths = state_deaths
+
+                        confirmed_plot_values.append(total_confirmed)
+                    
+                    print(F'{date}.csv : {target_state:10} - confirmed: {state_confirmed:4} change: {d_confirmed:4} | deaths: {state_deaths:4} change: {d_state_deaths:4} |' )
+
+                    # print(confirmed_plot_values)
+                    if (target_state in plot_confirmed.keys()):
+                         plot_confirmed[target_state].append(total_confirmed)
+                    else:
+                        plot_confirmed[target_state] = [total_confirmed]
+
+xs = []
+ys = []
+colors = []
+
+# Thanks to John S. for the jumpstart on the Bokeh code
+
+# output to static HTML file
+output_file("lines.html")
+
+p = figure(plot_width=800, plot_height=400,x_range=plot_dates)
+p.xaxis.major_label_orientation = math.pi/2
+
+legend = Legend(location=(0,0))
+p.add_layout(legend, 'right')
+
+for state in target_states:
+    xs.append(plot_dates)
+    ys.append(plot_confirmed[state])
+    colors.append(state_colors[state])
+    p.line(x=plot_dates, y=plot_confirmed[state], legend_label=state , line_width=2, color=state_colors[state])
     
+#p.multi_line(xs, ys, line_width=2, legend = target_states, color=colors)
+# p.line(x=plot_dates, y=plot_confirmed_plot_values, legend_label=target_state , line_width=2, color="blue")
 
+# show the results
+show(p)
 
+# City-specific.  We'll add this back in later
+"""
+# Get a specific city
+            if (target_city is not None): 
+                if (key.find('Admin2') >= 0):
+                    cities = df['Admin2']
+                    for city in cities:
+                        if (type(city)is str):
+                            if (city.find(target_city)>=0):
+                                tc = df[df['Admin2']==target_city]
+                                # stated_confirmed = tc['Confirmed'].values[target_city]
+                                # state_deaths = tc['state_Deaths'].values[target_city]
+                                # print(F'{date}.csv : {target_city} - stated_confirmed: {stated_confirmed}  state_deaths: {state_deaths} ')
+                                # print(tc)
+"""
