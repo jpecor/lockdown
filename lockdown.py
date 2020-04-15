@@ -31,6 +31,13 @@ a bit about Pandas than anything else.
 
 * Author: Jason Pecor
 
+TODO: 
+1. Add command line argument parser to get target states, dates, etc.
+2. Make the target city stuff work again
+3. Revisit how the Pandas data frames are being handeled - pretty sure it's 
+   really innefficient
+4. General cleanup
+
 """
 
 import pandas as pd 
@@ -43,7 +50,7 @@ import math
 months = {"jan":('01', 1,31),
           "feb":('02', 20,28),
           "mar":('03', 22,31), 
-          "apr":('04', 1,12),
+          "apr":('04', 1,13),
           "may":('05', 1,31),
           "jun":('06', 1,30),
           "jul":('07', 1,31),
@@ -54,30 +61,39 @@ months = {"jan":('01', 1,31),
           "dec":('12', 1,28)
          }
 
-target_states = ['Wisconsin', 'Idaho', 'Iowa']
-# target_states = ['Wisconsin']
+# Eventually replace this with command-line arguments
 
+# target_states = ['Massachusetts']
+# target_states = ['Wisconsin', 'Idaho', 'Iowa', 'Utah', 'Massachusetts']
+# target_states = ['Wisconsin', 'Idaho', 'Iowa', 'Utah']
+target_states = ['Wisconsin']
+
+# This could add random colors based on the number of target states
 state_colors = {'Wisconsin':'blue',
                 'Idaho':'red',
-                'Iowa':'orange'}
-
-# target_state = 'Wisconsin'
-# target_state = 'Idaho'
-# target_state = 'Iowa'
+                'Iowa':'orange',
+                'Utah':'green',
+                'Massachusetts': 'purple'}
 
 target_city = 'Eau Claire'
 
 # target_months = ['mar','apr']
 target_months = ['apr']
 
+# Initialize some dictionaries and lists
 dfs = {}
 statefs = {}
 
-total_confirmed = 0
-total_state_deaths = 0
+total_confirmed = {}
+total_deaths = {}
+
+for state in target_states:
+    total_confirmed[state] = 0
+    total_deaths[state] = 0
 
 plot_dates = []
 plot_confirmed = {}
+
 
 for month in target_months:
 
@@ -86,11 +102,8 @@ for month in target_months:
 
     for day in range(first_day,last_day):
 
-        state_confirmed = 0
-        state_deaths = 0
-
         date = F'{months[month][0]}-{day:02}-2020'
-        print(f'Fetching data for {date}')
+        # print(f'Fetching data for {date}')
 
         plot_dates.append(date)
 
@@ -104,16 +117,13 @@ for month in target_months:
         df = dfs[date]
 
         for key in keys:
+
             # Look for a target state
-            
             if (key.find('Province_State') >= 0):
 
                 states = df['Province_State']
 
                 for target_state in target_states:
-
-                    total_confirmed = 0
-                    total_deaths = 0
 
                     for state in states:
                         # print(state)
@@ -125,8 +135,6 @@ for month in target_months:
                     state_confirmed = 0
                     state_deaths = 0
                     confirmed_plot_values = []
-                    xs = []
-                    ys = []
                     
                     if (statefs[target_state] is not None):
 
@@ -135,28 +143,29 @@ for month in target_months:
                             state_confirmed += statefs[target_state]['Confirmed'].values[city]
                             state_deaths += statefs[target_state]['Deaths'].values[city]
 
-                        d_confirmed = state_confirmed - total_confirmed
-                        total_confirmed = state_confirmed
+                        d_confirmed = state_confirmed - total_confirmed[target_state]
+                        total_confirmed[target_state] = state_confirmed
 
-                        d_state_deaths = state_deaths - total_deaths
-                        total_deaths = state_deaths
+                        d_state_deaths = state_deaths - total_deaths[target_state]
+                        total_deaths[target_state] = state_deaths
 
-                        confirmed_plot_values.append(total_confirmed)
-                    
+                        confirmed_plot_values.append(total_confirmed[target_state])
+
+            
                     print(F'{date}.csv : {target_state:10} - confirmed: {state_confirmed:4} change: {d_confirmed:4} | deaths: {state_deaths:4} change: {d_state_deaths:4} |' )
 
                     # print(confirmed_plot_values)
                     if (target_state in plot_confirmed.keys()):
-                         plot_confirmed[target_state].append(total_confirmed)
+                         plot_confirmed[target_state].append(total_confirmed[target_state])
                     else:
-                        plot_confirmed[target_state] = [total_confirmed]
+                        plot_confirmed[target_state] = [total_confirmed[target_state]]
 
+# Prep some lists for passing into Bokeh 
 xs = []
 ys = []
 colors = []
 
 # Thanks to John S. for the jumpstart on the Bokeh code
-
 # output to static HTML file
 output_file("lines.html")
 
@@ -172,10 +181,12 @@ for state in target_states:
     colors.append(state_colors[state])
     p.line(x=plot_dates, y=plot_confirmed[state], legend_label=state , line_width=2, color=state_colors[state])
     
-#p.multi_line(xs, ys, line_width=2, legend = target_states, color=colors)
-# p.line(x=plot_dates, y=plot_confirmed_plot_values, legend_label=target_state , line_width=2, color="blue")
+# At first, I tried using the multi_line function, but it's not very flexible
+# And I figured out I could just keep adding slingle lines.  That works better.
 
-# show the results
+# p.multi_line(xs, ys, line_width=2, legend = target_states, color=colors)
+
+# Show the results - this will open a page in a browser
 show(p)
 
 # City-specific.  We'll add this back in later
